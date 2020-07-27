@@ -15,7 +15,7 @@ public class WordController {
     WordService ws;
 
     @GetMapping("topX/{number}/{filename}")
-    public Map<String, Integer> getPopularWords(@PathVariable int number, @PathVariable String filename){
+    public Map<String, Long> getPopularWords(@PathVariable int number, @PathVariable String filename){
         return ws.getWordsMap(number, filename);
     }
 }

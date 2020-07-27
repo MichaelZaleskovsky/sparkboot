@@ -3,13 +3,13 @@ package mz.project.sparkboot.services;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.broadcast.Broadcast;
+import org.apache.spark.storage.StorageLevel;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import scala.Tuple2;
 
 import java.util.*;
 import java.util.stream.Collector;
-import java.util.stream.Collectors;
 
 @Service
 public class WordService {
@@ -20,7 +20,7 @@ public class WordService {
     @Autowired
     List<String> wasteList;
 
-    public Map<String, Integer> getWordsMap(int number, String filename) {
+    public Map<String, Long> getWordsMap(int number, String filename) {
 
         Set<String> wasteSet = new HashSet<>(wasteList);
 
@@ -31,26 +31,24 @@ public class WordService {
         JavaRDD<String> words = lines.flatMap(line -> Arrays.asList(line.split("\\W+")).iterator())
                 .map(String::toLowerCase)
                 .filter(str -> str.length() > 1)
-                .filter(str -> !broadcastSet.value().contains(str));
+                .filter(str -> !broadcastSet.value().contains(str))
+                .persist(StorageLevel.MEMORY_AND_DISK());
 
-        Map<String, Integer> pairs = words
-                .mapToPair(word -> new Tuple2<String, Integer>(word, 1))
-                .reduceByKey(Integer::sum)
-                .mapToPair(Tuple2::swap)
+        Map<String, Long> pairs = words
+                .groupBy(w -> w)
+                .mapToPair(tup -> new Tuple2<Long, String>(tup._2.spliterator().getExactSizeIfKnown(), tup._1))
                 .sortByKey(false)
-                .mapToPair(Tuple2::swap)
                 .take(number)
                 .stream()
                 .collect(getCollector());
-//                .collect(Collectors.toMap(tup -> tup._1, tup -> tup._2));
 
         return pairs;
     }
 
-    private Collector<Tuple2<String, Integer>, Map<String, Integer>, Map<String, Integer>> getCollector() {
+    private Collector<Tuple2<Long, String>, Map<String, Long>, Map<String, Long>> getCollector() {
         return Collector.of(
                 LinkedHashMap::new,
-                (map, tup) -> map.put(tup._1, tup._2),
+                (map, tup) -> map.put(tup._2, tup._1),
                 (left, right) -> { left.putAll(right); return left;},
                 Collector.Characteristics.IDENTITY_FINISH);
     }
